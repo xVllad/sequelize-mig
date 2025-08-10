@@ -31,25 +31,39 @@ const undo = async (argv) => {
 
   if (fs.existsSync(curStatePath)) {
     // eslint-disable-next-line import/no-dynamic-require
-    const curState = require(curStatePath);
-    bakStatePath = curState.backupPath;
+    try {
+      const curState = JSON.parse(await fs.promises.readFile(curStatePath, 'utf8'));
+      bakStatePath = curState.backupPath;
 
-    curStateRevision = curState.revision;
-    log(3, `Current state file: ${curStateName}, Revision: ${curStateRevision}`);
+      curStateRevision = curState.revision;
+      log(3, `Current state file: ${curStateName}, Revision: ${curStateRevision}`);
+    } catch (error) {
+      log(3, `Error reading current state file: ${error.message}`);
+    }
   } else {
     log(3, `Can't find current state. Skipping`);
   }
 
   if (fs.existsSync(migrationsDir)) {
-    const migs = fs.readdirSync(migrationsDir);
+    const allFiles = fs.readdirSync(migrationsDir);
+    
+    const migs = allFiles.filter(file => {
+      return file.endsWith('.js') && 
+             !file.startsWith('_current') && 
+             !file.includes('_bak');
+    });
 
     if (migs.length > 0) {
       curMigName = migs[migs.length - 1];
       curMigPath = path.join(migrationsDir, curMigName);
 
-      curMigRevision = (await import(`file:////${curMigPath}`)).default.info.revision;
-
-      log(3, `Current migration file: ${curMigName}, Revision: ${curMigRevision}`);
+      try {
+        const migrationModule = await import(`file:///${curMigPath}`);
+        curMigRevision = migrationModule.default.info.revision;
+        log(3, `Current migration file: ${curMigName}, Revision: ${curMigRevision}`);
+      } catch (error) {
+        log(3, `Error reading migration file: ${error.message}`);
+      }
     } else {
       log(3, `Can't find any migrations files. Skipping`);
     }
